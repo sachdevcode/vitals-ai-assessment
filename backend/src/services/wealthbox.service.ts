@@ -1,5 +1,5 @@
 import axios, { AxiosError } from 'axios';
-import env from '../config/env';
+import { config } from '../config';
 import logger from '../utils/logger';
 
 interface WealthboxEmail {
@@ -24,20 +24,23 @@ interface WealthboxResponse {
   };
 }
 
-class WealthboxService {
+export class WealthboxService {
   private readonly apiUrl: string;
   private readonly apiKey: string;
   private readonly maxRetries = 3;
   private readonly retryDelay = 1000; // 1 second
 
   constructor() {
-    this.apiUrl = env.WEALTHBOX_API_URL;
-    this.apiKey = env.WEALTHBOX_API_KEY;
+    if (!config.wealthbox.apiKey) {
+      throw new Error('WEALTHBOX_API_KEY is required');
+    }
+    this.apiUrl = config.wealthbox.apiUrl;
+    this.apiKey = config.wealthbox.apiKey;
   }
 
-  private get headers() {
+  private getHeaders() {
     return {
-      'Authorization': `Bearer ${this.apiKey}`,
+      'ACCESS_TOKEN': this.apiKey,
       'Content-Type': 'application/json',
     };
   }
@@ -52,13 +55,14 @@ class WealthboxService {
   ): Promise<T> {
     try {
       return await operation();
-    } catch (error) {
+    } catch (error: unknown) {
       if (retries === 0) throw error;
       
-      const axiosError = error as AxiosError;
-      if (axiosError.response?.status === 429) { // Rate limit
-        await this.delay(this.retryDelay * (this.maxRetries - retries + 1));
-        return this.retryWithBackoff(operation, retries - 1);
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) { // Rate limit
+          await this.delay(this.retryDelay * (this.maxRetries - retries + 1));
+          return this.retryWithBackoff(operation, retries - 1);
+        }
       }
       throw error;
     }
@@ -68,7 +72,7 @@ class WealthboxService {
     try {
       const response = await this.retryWithBackoff(() =>
         axios.get(`${this.apiUrl}/contacts`, {
-          headers: this.headers,
+          headers: this.getHeaders(),
           params: {
             type: 'Person',
             page,
@@ -76,10 +80,13 @@ class WealthboxService {
           },
         })
       );
-
       return response.data;
-    } catch (error) {
-      logger.error('Error fetching contacts from Wealthbox:', error);
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        logger.error('Error fetching contacts from Wealthbox:', error.response?.data || error.message);
+      } else {
+        logger.error('Unknown error fetching contacts from Wealthbox:', error);
+      }
       throw new Error('Failed to fetch contacts from Wealthbox');
     }
   }
@@ -101,6 +108,86 @@ class WealthboxService {
     }
 
     return allContacts;
+  }
+
+  async getContact(id: number) {
+    try {
+      const response = await axios.get(`${this.apiUrl}/contacts/${id}`, {
+        headers: this.getHeaders(),
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        logger.error('Error fetching contact from Wealthbox:', error.response?.data || error.message);
+      } else {
+        logger.error('Unknown error fetching contact from Wealthbox:', error);
+      }
+      throw new Error('Failed to fetch contact from Wealthbox');
+    }
+  }
+
+  async getTasks() {
+    try {
+      const response = await axios.get(`${this.apiUrl}/tasks`, {
+        headers: this.getHeaders(),
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        logger.error('Error fetching tasks from Wealthbox:', error.response?.data || error.message);
+      } else {
+        logger.error('Unknown error fetching tasks from Wealthbox:', error);
+      }
+      throw new Error('Failed to fetch tasks from Wealthbox');
+    }
+  }
+
+  async getTask(id: number) {
+    try {
+      const response = await axios.get(`${this.apiUrl}/tasks/${id}`, {
+        headers: this.getHeaders(),
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        logger.error('Error fetching task from Wealthbox:', error.response?.data || error.message);
+      } else {
+        logger.error('Unknown error fetching task from Wealthbox:', error);
+      }
+      throw new Error('Failed to fetch task from Wealthbox');
+    }
+  }
+
+  async getEvents() {
+    try {
+      const response = await axios.get(`${this.apiUrl}/events`, {
+        headers: this.getHeaders(),
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        logger.error('Error fetching events from Wealthbox:', error.response?.data || error.message);
+      } else {
+        logger.error('Unknown error fetching events from Wealthbox:', error);
+      }
+      throw new Error('Failed to fetch events from Wealthbox');
+    }
+  }
+
+  async getEvent(id: number) {
+    try {
+      const response = await axios.get(`${this.apiUrl}/events/${id}`, {
+        headers: this.getHeaders(),
+      });
+      return response.data;
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error)) {
+        logger.error('Error fetching event from Wealthbox:', error.response?.data || error.message);
+      } else {
+        logger.error('Unknown error fetching event from Wealthbox:', error);
+      }
+      throw new Error('Failed to fetch event from Wealthbox');
+    }
   }
 }
 

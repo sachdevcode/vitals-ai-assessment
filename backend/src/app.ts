@@ -3,6 +3,7 @@ import cors from "cors";
 import userRoutes from "./routes/user.routes";
 import organizationRoutes from "./routes/organization.routes";
 import webhookRoutes from "./routes/webhook.routes";
+import wealthboxRoutes from "./routes/wealthbox.routes";
 import { schedulerService } from "./services/scheduler.service";
 import { authMiddleware } from "./middleware/auth.middleware";
 import logger from "./utils/logger";
@@ -24,6 +25,7 @@ app.use("/api/webhooks/wealthbox", webhookRoutes);
 // Protected routes (auth required)
 app.use("/api/users", userRoutes);
 app.use("/api/organizations", organizationRoutes);
+app.use("/api/wealthbox", authMiddleware, wealthboxRoutes);
 
 // Start scheduled sync
 schedulerService.startScheduledSync();
