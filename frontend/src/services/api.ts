@@ -9,16 +9,30 @@ import {
 } from "@/types";
 
 // API Configuration
+const API_KEY = import.meta.env.VITE_API_KEY;
+if (!API_KEY) {
+  console.error("API Key is not set in environment variables");
+}
+
 const API_CONFIG = {
   baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000/api",
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
+    "X-API-Key": API_KEY,
   },
 };
 
 // Create axios instance with configuration
 const api = axios.create(API_CONFIG);
+
+// Add request interceptor to ensure headers are set for every request
+api.interceptors.request.use((config) => {
+  if (!config.headers["X-API-Key"]) {
+    config.headers["X-API-Key"] = API_KEY;
+  }
+  return config;
+});
 
 // Error handling
 const handleError = (error: AxiosError<ApiError>) => {
@@ -37,10 +51,10 @@ export const userService = {
   ): Promise<UsersResponse> => {
     try {
       const params = new URLSearchParams({
-        page: page.toString(),
-        limit: limit.toString(),
+        page: String(page),
+        limit: String(limit),
         ...(search && { search }),
-        ...(organizationId && { organizationId: organizationId.toString() }),
+        ...(organizationId && { organizationId: String(organizationId) }),
       });
 
       const response = await api.get<UsersResponse>(`/users?${params}`);

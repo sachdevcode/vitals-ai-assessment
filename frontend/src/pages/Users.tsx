@@ -8,21 +8,16 @@ import { User, Organization } from "@/types";
 
 export const Users = () => {
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
+  const [page, setPage] = useState(1);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
 
-  const { data: users = [], isLoading: isLoadingUsers } = useQuery<
-    User[],
-    Error
-  >({
-    queryKey: ["users"],
-    queryFn: userService.getUsers,
+  const { data: usersResponse, isLoading: isLoadingUsers } = useQuery({
+    queryKey: ["users", page, selectedOrg?.id],
+    queryFn: () => userService.getUsers(page, 10, undefined, selectedOrg?.id),
   });
 
-  const { data: organizations = [], isLoading: isLoadingOrgs } = useQuery<
-    Organization[],
-    Error
-  >({
+  const { data: organizations = [], isLoading: isLoadingOrgs } = useQuery({
     queryKey: ["organizations"],
     queryFn: organizationService.getOrganizations,
   });
@@ -47,10 +42,6 @@ export const Users = () => {
         )?.name || "",
     },
   ];
-
-  const filteredUsers = users.filter(
-    (user) => !selectedOrg || user.organizationId === selectedOrg.id
-  );
 
   return (
     <Box
@@ -99,7 +90,7 @@ export const Users = () => {
       >
         <DataTable
           columns={columns}
-          data={filteredUsers}
+          data={usersResponse?.users || []}
           isLoading={isLoadingUsers}
           getRowId={(user: User) => user.id}
           defaultSortBy="name"
@@ -108,6 +99,11 @@ export const Users = () => {
               ? `No users found in ${selectedOrg.name}`
               : "No users found"
           }
+          pagination={{
+            page,
+            totalPages: usersResponse?.pagination.totalPages || 0,
+            onPageChange: setPage,
+          }}
         />
       </Box>
     </Box>
