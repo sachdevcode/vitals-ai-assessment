@@ -80,6 +80,7 @@ export class WealthboxService {
           },
         })
       );
+      console.log("check data here",response.data);
       return response.data;
     } catch (error: unknown) {
       if (axios.isAxiosError(error)) {

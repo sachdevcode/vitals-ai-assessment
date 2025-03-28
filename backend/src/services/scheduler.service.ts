@@ -7,8 +7,8 @@ export class SchedulerService {
   private syncJob: cron.ScheduledTask | null = null;
 
   startScheduledSync() {
-    // Run sync at midnight every day
-    this.syncJob = cron.schedule('0 0 * * *', async () => {
+    // Run sync every 1 minute
+    this.syncJob = cron.schedule('* * * * *', async () => {
       try {
         logger.info('Starting scheduled sync');
         
@@ -28,7 +28,7 @@ export class SchedulerService {
       }
     });
 
-    logger.info('Scheduled sync job started');
+    logger.info('Scheduled sync job started - running every 1 minute');
   }
 
   stopScheduledSync() {
