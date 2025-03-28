@@ -7,38 +7,59 @@ import logger from '../utils/logger';
 export class UserController {
   async syncUsers(req: Request, res: Response) {
     try {
+      logger.info('Starting user sync from Wealthbox');
       const contacts = await wealthboxService.fetchAllContacts();
-      const results = await Promise.all(
-        contacts.map(async (contact) => {
-          const primaryEmail = contact.email_addresses.find((email) => email.primary)?.email;
-          if (!primaryEmail) {
-            logger.warn(`Contact ${contact.id} has no primary email`);
-            return null;
-          }
+      logger.info(`Fetched ${contacts.length} contacts from Wealthbox`);
 
-          // Handle organization if company_name exists
+      let successCount = 0;
+      let skippedCount = 0;
+      let errorCount = 0;
+
+      for (const contact of contacts) {
+        try {
+          // Get primary email or generate a fallback identifier
+          const primaryEmail = contact.email_addresses.find(email => email.primary)?.email;
+          const fallbackEmail = primaryEmail || `contact_${contact.id}@placeholder.com`;
+
+          // Handle organization first if company_name exists
           let organizationId: number | undefined;
           if (contact.company_name) {
-            const organization = await organizationRepository.upsert({
-              name: contact.company_name,
-            });
-            organizationId = organization.id;
+            try {
+              const organization = await organizationRepository.upsert({
+                name: contact.company_name,
+              });
+              organizationId = organization.id;
+            } catch (error) {
+              logger.error(`Error processing organization for contact ${contact.id}:`, error);
+              errorCount++;
+              continue;
+            }
           }
 
-          return userRepository.upsert({
+          // Create or update user
+          await userRepository.upsert({
             wealthboxId: contact.id,
             firstName: contact.first_name,
             lastName: contact.last_name,
-            email: primaryEmail,
+            email: fallbackEmail,
             organizationId,
           });
-        })
-      );
 
-      const successfulSyncs = results.filter((result): result is NonNullable<typeof result> => result !== null).length;
+          successCount++;
+          logger.debug(`Successfully synced contact ${contact.id} with email ${fallbackEmail}`);
+        } catch (error) {
+          logger.error(`Error processing contact ${contact.id}:`, error);
+          errorCount++;
+        }
+      }
+
+      logger.info(`Sync completed. Successfully synced ${successCount} out of ${contacts.length} users`);
       res.json({
-        message: `Successfully synced ${successfulSyncs} users`,
+        message: 'Sync completed',
         total: contacts.length,
+        success: successCount,
+        skipped: skippedCount,
+        errors: errorCount,
       });
     } catch (error) {
       logger.error('Error syncing users:', error);
@@ -62,6 +83,20 @@ export class UserController {
     } catch (error) {
       logger.error('Error fetching users:', error);
       res.status(500).json({ error: 'Failed to fetch users' });
+    }
+  }
+
+  async testConnection(req: Request, res: Response) {
+    try {
+      const isConnected = await wealthboxService.testConnection();
+      if (isConnected) {
+        res.json({ message: 'Successfully connected to Wealthbox API' });
+      } else {
+        res.status(500).json({ error: 'Failed to connect to Wealthbox API' });
+      }
+    } catch (error) {
+      logger.error('Error testing Wealthbox API connection:', error);
+      res.status(500).json({ error: 'Failed to test Wealthbox API connection' });
     }
   }
 }

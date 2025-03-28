@@ -8,17 +8,17 @@ datasource db {
 }
 
 model User {
-  id             Int      @id @default(autoincrement())
-  wealthboxId    Int      @unique
+  id             Int                       @id @default(autoincrement())
+  wealthboxId    Int                       @unique
   firstName      String
   lastName       String
-  email          String   @unique
+  email          String                    @unique
   organizationId Int?
-  organization   Organization? @relation(fields: [organizationId], references: [id])
   integrationId  Int?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
   integration    IntegrationConfiguration? @relation(fields: [integrationId], references: [id])
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  organization   Organization?             @relation(fields: [organizationId], references: [id])
 
   @@index([organizationId])
   @@index([integrationId])
@@ -26,22 +26,22 @@ model User {
 }
 
 model Organization {
-  id         Int      @id @default(autoincrement())
-  name       String   @unique
-  users      User[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
 
   @@index([name])
 }
 
 model IntegrationConfiguration {
-  id         Int      @id @default(autoincrement())
-  name       String   @unique
-  apiKey     String
-  users      User[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  apiKey    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
 
   @@index([name])
-} 
+}
