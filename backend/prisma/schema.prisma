@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  wealthboxId    Int      @unique
+  firstName      String
+  lastName       String
+  email          String   @unique
+  organizationId Int?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  integrationId  Int?
+  integration    IntegrationConfiguration? @relation(fields: [integrationId], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([integrationId])
+  @@index([email])
+}
+
+model Organization {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  users      User[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([name])
+}
+
+model IntegrationConfiguration {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  apiKey     String
+  users      User[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([name])
+} 
