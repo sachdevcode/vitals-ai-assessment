@@ -11,6 +11,7 @@ import {
   CircularProgress,
   useTheme,
   useMediaQuery,
+  Pagination,
 } from "@mui/material";
 import { ReactNode, useState } from "react";
 import { ArrowUpward, ArrowDownward } from "@mui/icons-material";
@@ -33,6 +34,11 @@ interface DataTableProps<T> {
   emptyMessage?: string;
   getRowId: (item: T) => string | number;
   defaultSortBy?: string;
+  pagination?: {
+    page: number;
+    totalPages: number;
+    onPageChange: (page: number) => void;
+  };
 }
 
 export default function DataTable<T extends Record<string, any>>({
@@ -42,6 +48,7 @@ export default function DataTable<T extends Record<string, any>>({
   emptyMessage = "No data available",
   getRowId,
   defaultSortBy,
+  pagination,
 }: DataTableProps<T>) {
   const [orderBy, setOrderBy] = useState<string>(
     defaultSortBy || columns[0].field
@@ -107,81 +114,102 @@ export default function DataTable<T extends Record<string, any>>({
           </Typography>
         </Box>
       ) : (
-        <TableContainer
-          component={Paper}
-          elevation={0}
-          sx={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            backgroundColor: "transparent",
-          }}
-        >
-          <Table stickyHeader size="medium">
-            <TableHead>
-              <TableRow>
-                {columns.map((column) => (
-                  <TableCell
-                    key={column.field}
-                    align={column.align || "left"}
-                    sx={{
-                      whiteSpace: "nowrap",
-                      backgroundColor: (theme) =>
-                        theme.palette.background.paper,
-                      minWidth: isMobile ? column.minWidth || 100 : "auto",
-                      cursor: "pointer",
-                      position: "sticky",
-                      top: 0,
-                      zIndex: 1,
-                    }}
-                    onClick={() => handleSort(column.field)}
-                  >
-                    <Box
-                      sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
-                    >
-                      {column.headerName}
-                      {orderBy === column.field &&
-                        (order === "asc" ? (
-                          <ArrowUpward fontSize="small" />
-                        ) : (
-                          <ArrowDownward fontSize="small" />
-                        ))}
-                    </Box>
-                  </TableCell>
-                ))}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {sortedData.map((row) => (
-                <TableRow
-                  key={getRowId(row)}
-                  hover
-                  sx={{
-                    "&:last-child td, &:last-child th": { border: 0 },
-                  }}
-                >
+        <>
+          <TableContainer
+            component={Paper}
+            elevation={0}
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              backgroundColor: "transparent",
+            }}
+          >
+            <Table stickyHeader size="medium">
+              <TableHead>
+                <TableRow>
                   {columns.map((column) => (
                     <TableCell
                       key={column.field}
                       align={column.align || "left"}
                       sx={{
                         whiteSpace: "nowrap",
+                        backgroundColor: (theme) =>
+                          theme.palette.background.paper,
                         minWidth: isMobile ? column.minWidth || 100 : "auto",
-                        py: 1.5,
+                        cursor: "pointer",
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 1,
                       }}
+                      onClick={() => handleSort(column.field)}
                     >
-                      {column.renderCell
-                        ? column.renderCell(row)
-                        : column.getValue
-                        ? column.getValue(row)
-                        : row[column.field]}
+                      <Box
+                        sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                      >
+                        {column.headerName}
+                        {orderBy === column.field &&
+                          (order === "asc" ? (
+                            <ArrowUpward fontSize="small" />
+                          ) : (
+                            <ArrowDownward fontSize="small" />
+                          ))}
+                      </Box>
                     </TableCell>
                   ))}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {sortedData.map((row) => (
+                  <TableRow
+                    key={getRowId(row)}
+                    hover
+                    sx={{
+                      "&:last-child td, &:last-child th": { border: 0 },
+                    }}
+                  >
+                    {columns.map((column) => (
+                      <TableCell
+                        key={column.field}
+                        align={column.align || "left"}
+                        sx={{
+                          whiteSpace: "nowrap",
+                          minWidth: isMobile ? column.minWidth || 100 : "auto",
+                          py: 1.5,
+                        }}
+                      >
+                        {column.renderCell
+                          ? column.renderCell(row)
+                          : column.getValue
+                          ? column.getValue(row)
+                          : row[column.field]}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          {pagination && (
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "center",
+                py: 2,
+                borderTop: 1,
+                borderColor: "divider",
+              }}
+            >
+              <Pagination
+                count={pagination.totalPages}
+                page={pagination.page}
+                onChange={(_, value) => pagination.onPageChange(value)}
+                color="primary"
+                size="large"
+              />
+            </Box>
+          )}
+        </>
       )}
     </Box>
   );

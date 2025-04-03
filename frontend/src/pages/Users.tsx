@@ -26,7 +26,7 @@ export const Users = () => {
     {
       field: "name",
       headerName: "Name",
-      getValue: (user) => user.name,
+      getValue: (user) => `${user.firstName} ${user.lastName}`,
     },
     {
       field: "email",
@@ -36,10 +36,7 @@ export const Users = () => {
     {
       field: "organization",
       headerName: "Organization",
-      getValue: (user: User) =>
-        organizations.find(
-          (org: Organization) => org.id === user.organizationId
-        )?.name || "",
+      getValue: (user) => user.organization?.name || "",
     },
   ];
 
