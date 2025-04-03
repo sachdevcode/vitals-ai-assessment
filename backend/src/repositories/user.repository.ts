@@ -1,6 +1,7 @@
-import prisma from '../config/prisma';
+import { PrismaClient, Prisma } from '@prisma/client';
 import logger from '../utils/logger';
-import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 type UserWhereInput = {
   OR?: Array<{
@@ -18,125 +19,110 @@ export class UserRepository {
     lastName: string;
     email: string;
     organizationId?: number;
-    integrationId?: number;
   }) {
     try {
-      logger.info('Creating new user:', { email: data.email, wealthboxId: data.wealthboxId });
-      const user = await prisma.user.create({
+      return await prisma.user.create({
         data,
+        include: {
+          organization: true,
+        },
       });
-      logger.info('Successfully created user:', { id: user.id, email: user.email });
-      return user;
     } catch (error) {
       logger.error('Error creating user:', error);
-      throw new Error('Failed to create user');
+      throw error;
+    }
+  }
+
+  async findByEmail(email: string) {
+    try {
+      return await prisma.user.findUnique({
+        where: { email },
+        include: {
+          organization: true,
+        },
+      });
+    } catch (error) {
+      logger.error('Error finding user by email:', error);
+      throw error;
     }
   }
 
   async findByWealthboxId(wealthboxId: number) {
     try {
-      logger.info('Finding user by Wealthbox ID:', wealthboxId);
-      const user = await prisma.user.findUnique({
+      return await prisma.user.findUnique({
         where: { wealthboxId },
+        include: {
+          organization: true,
+        },
       });
-      if (user) {
-        logger.info('Found user:', { id: user.id, email: user.email });
-      } else {
-        logger.info('No user found with Wealthbox ID:', wealthboxId);
-      }
-      return user;
     } catch (error) {
       logger.error('Error finding user by Wealthbox ID:', error);
-      throw new Error('Failed to find user');
+      throw error;
+    }
+  }
+
+  async findByOrganizationId(organizationId: number) {
+    try {
+      return await prisma.user.findMany({
+        where: { organizationId },
+        include: {
+          organization: true,
+        },
+        orderBy: {
+          firstName: 'asc',
+        },
+      });
+    } catch (error) {
+      logger.error('Error finding users by organization ID:', error);
+      throw error;
     }
   }
 
   async upsert(data: {
     wealthboxId: number;
     firstName: string;
-    lastName: string;
+    lastName?: string;
     email: string;
     organizationId?: number;
-    integrationId?: number;
   }) {
     try {
-      logger.info('Upserting user:', { email: data.email, wealthboxId: data.wealthboxId });
-      
-      // First try to find existing user by wealthboxId
-      const existingUser = await prisma.user.findUnique({
-        where: { wealthboxId: data.wealthboxId },
-      });
+      // Ensure lastName is provided, use a default if not
+      const lastName = data.lastName || 'Unknown';
+
+      const existingUser = await this.findByWealthboxId(data.wealthboxId);
 
       if (existingUser) {
         // Update existing user
-        const user = await prisma.user.update({
+        return await prisma.user.update({
           where: { wealthboxId: data.wealthboxId },
           data: {
-            firstName: data.firstName,
-            lastName: data.lastName,
+            firstName: data.firstName || existingUser.firstName,
+            lastName: lastName,
             email: data.email,
             organizationId: data.organizationId,
-            integrationId: data.integrationId,
+          },
+          include: {
+            organization: true,
           },
         });
-        logger.info('Successfully updated user:', { id: user.id, email: user.email });
-        return user;
       } else {
-        // Check if email already exists
-        const existingEmailUser = await prisma.user.findUnique({
-          where: { email: data.email },
-        });
-
-        if (existingEmailUser) {
-          // If email exists but wealthboxId is different, generate a new email
-          const newEmail = `contact_${data.wealthboxId}_${Date.now()}@placeholder.com`;
-          logger.warn(`Email ${data.email} already exists, using new email: ${newEmail}`);
-          data.email = newEmail;
-        }
-
         // Create new user
-        const user = await prisma.user.create({
-          data,
+        return await prisma.user.create({
+          data: {
+            wealthboxId: data.wealthboxId,
+            firstName: data.firstName,
+            lastName: lastName,
+            email: data.email,
+            organizationId: data.organizationId,
+          },
+          include: {
+            organization: true,
+          },
         });
-        logger.info('Successfully created user:', { id: user.id, email: user.email });
-        return user;
       }
     } catch (error) {
-      if (error instanceof Error) {
-        logger.error('Error upserting user:', {
-          error: error.message,
-          stack: error.stack,
-          data: { email: data.email, wealthboxId: data.wealthboxId }
-        });
-      } else {
-        logger.error('Unknown error upserting user:', error);
-      }
+      logger.error('Error upserting user:', { data, error });
       throw new Error('Failed to upsert user');
-    }
-  }
-
-  async findByOrganizationId(organizationId: number) {
-    try {
-      logger.info('Finding users by organization ID:', organizationId);
-      const users = await prisma.user.findMany({
-        where: { organizationId },
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-          createdAt: true,
-          updatedAt: true
-        },
-        orderBy: {
-          firstName: 'asc'
-        }
-      });
-      logger.info(`Found ${users.length} users for organization:`, organizationId);
-      return users;
-    } catch (error) {
-      logger.error('Error finding users by organization ID:', error);
-      throw new Error('Failed to find users');
     }
   }
 
@@ -145,76 +131,60 @@ export class UserRepository {
     limit?: number;
     search?: string;
     organizationId?: number;
-  } = {}) {
+  }) {
     try {
       const { page = 1, limit = 10, search, organizationId } = params;
       const skip = (page - 1) * limit;
 
-      const where: UserWhereInput = {
+      const where: Prisma.UserWhereInput = {
         ...(search && {
           OR: [
-            { firstName: { contains: search, mode: 'insensitive' } },
-            { lastName: { contains: search, mode: 'insensitive' } },
-            { email: { contains: search, mode: 'insensitive' } }
-          ]
+            { firstName: { contains: search, mode: Prisma.QueryMode.insensitive } },
+            { lastName: { contains: search, mode: Prisma.QueryMode.insensitive } },
+            { email: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          ],
         }),
-        ...(organizationId && { organizationId })
+        ...(organizationId && { organizationId }),
       };
-
-      logger.info('Finding all users with params:', { page, limit, search, organizationId });
 
       const [users, total] = await Promise.all([
         prisma.user.findMany({
           where,
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            organization: {
-              select: {
-                id: true,
-                name: true
-              }
-            },
-            createdAt: true,
-            updatedAt: true
+          skip,
+          take: limit,
+          include: {
+            organization: true,
           },
           orderBy: {
-            firstName: 'asc'
+            createdAt: 'desc',
           },
-          skip,
-          take: limit
         }),
-        prisma.user.count({ where })
+        prisma.user.count({ where }),
       ]);
 
-      logger.info(`Found ${users.length} users out of ${total} total`);
       return {
         users,
         pagination: {
           total,
           page,
           limit,
-          totalPages: Math.ceil(total / limit)
-        }
+          totalPages: Math.ceil(total / limit),
+        },
       };
     } catch (error) {
       logger.error('Error finding all users:', error);
-      throw new Error('Failed to find users');
+      throw error;
     }
   }
 
-  async deleteByWealthboxId(wealthboxId: number) {
+  async delete(wealthboxId: number) {
     try {
-      logger.info('Deleting user by Wealthbox ID:', wealthboxId);
-      await prisma.user.delete({
+      return await prisma.user.delete({
         where: { wealthboxId },
       });
-      logger.info('Successfully deleted user with Wealthbox ID:', wealthboxId);
     } catch (error) {
-      logger.error('Error deleting user by Wealthbox ID:', error);
-      throw new Error('Failed to delete user');
+      logger.error('Error deleting user:', error);
+      throw error;
     }
   }
 }

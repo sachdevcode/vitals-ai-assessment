@@ -58,7 +58,7 @@ export class WebhookService {
           await this.handleContactChange(event.data, event.type);
           break;
         case 'contact.deleted':
-          await this.handleContactDeletion(event.data.id);
+          await this.handleContactDeletion(event.data);
           break;
         default:
           logger.warn(`Unhandled event type: ${event.type}`);
@@ -98,9 +98,15 @@ export class WebhookService {
     logger.info(`Successfully processed ${eventType} for contact ${data.id}`);
   }
 
-  private async handleContactDeletion(wealthboxId: number): Promise<void> {
-    await userRepository.deleteByWealthboxId(wealthboxId);
-    logger.info(`Successfully deleted contact ${wealthboxId}`);
+  private async handleContactDeletion(data: { id: number }) {
+    try {
+      const wealthboxId = data.id;
+      await userRepository.delete(wealthboxId);
+      //logger.info(`Successfully deleted contact ${wealthboxId}`);
+    } catch (error) {
+      //logger.error('Error deleting contact:', error);
+      throw error;
+    }
   }
 }
 
