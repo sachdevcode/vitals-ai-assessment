@@ -1,6 +1,5 @@
-import prisma from '../config/prisma';
-import logger from '../utils/logger';
-import { Prisma } from '@prisma/client';
+import { PrismaClient, Prisma } from "@prisma/client";
+import logger from "../utils/logger";
 
 interface FindAllParams {
   page?: number;
@@ -10,6 +9,8 @@ interface FindAllParams {
 }
 
 export class UserRepository {
+  constructor(private prisma: PrismaClient) {}
+
   async create(data: {
     wealthboxId: number;
     firstName: string;
@@ -18,7 +19,7 @@ export class UserRepository {
     organizationId?: number;
   }) {
     try {
-      return await prisma.user.create({
+      return await this.prisma.user.create({
         data,
         include: {
           organization: true,
@@ -32,7 +33,7 @@ export class UserRepository {
 
   async findByEmail(email: string) {
     try {
-      return await prisma.user.findUnique({
+      return await this.prisma.user.findUnique({
         where: { email },
         include: {
           organization: true,
@@ -46,7 +47,7 @@ export class UserRepository {
 
   async findByWealthboxId(wealthboxId: number) {
     try {
-      return await prisma.user.findUnique({
+      return await this.prisma.user.findUnique({
         where: { wealthboxId },
         include: {
           organization: true,
@@ -60,7 +61,7 @@ export class UserRepository {
 
   async findByOrganizationId(organizationId: number) {
     try {
-      return await prisma.user.findMany({
+      return await this.prisma.user.findMany({
         where: { organizationId },
         include: {
           organization: true,
@@ -75,39 +76,13 @@ export class UserRepository {
     }
   }
 
-  async upsert(data: {
-    wealthboxId: number;
-    firstName: string;
-    lastName: string;
-    email: string;
-    organizationId?: number;
-  }) {
+  async findAll({
+    page = 1,
+    limit = 10,
+    search,
+    organizationId,
+  }: FindAllParams = {}) {
     try {
-      return await prisma.user.upsert({
-        where: { wealthboxId: data.wealthboxId },
-        create: {
-          wealthboxId: data.wealthboxId,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          organizationId: data.organizationId,
-        },
-        update: {
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          organizationId: data.organizationId,
-        },
-      });
-    } catch (error) {
-      logger.error('Error upserting user:', error);
-      throw error;
-    }
-  }
-
-  async findAll(params: FindAllParams) {
-    try {
-      const { page = 1, limit = 10, search, organizationId } = params;
       const skip = (page - 1) * limit;
 
       const where: Prisma.UserWhereInput = {};
@@ -123,7 +98,7 @@ export class UserRepository {
       }
 
       const [users, total] = await Promise.all([
-        prisma.user.findMany({
+        this.prisma.user.findMany({
           where,
           include: {
             organization: true,
@@ -131,28 +106,56 @@ export class UserRepository {
           skip,
           take: limit,
           orderBy: {
-            firstName: 'asc',
+            createdAt: "desc",
           },
         }),
-        prisma.user.count({ where }),
+        this.prisma.user.count({ where }),
       ]);
 
       return {
-        users,
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+        data: users,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
       };
     } catch (error) {
-      logger.error('Error finding users:', error);
-      throw error;
+      logger.error("Error finding users:", error);
+      throw new Error("Failed to find users");
+    }
+  }
+
+  async upsert(data: {
+    wealthboxId: number;
+    firstName: string;
+    lastName: string;
+    email: string;
+    organizationId?: number;
+  }) {
+    try {
+      return await this.prisma.user.upsert({
+        where: { wealthboxId: data.wealthboxId },
+        update: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          organizationId: data.organizationId,
+        },
+        create: {
+          ...data,
+        },
+      });
+    } catch (error) {
+      logger.error("Error upserting user:", error);
+      throw new Error("Failed to upsert user");
     }
   }
 
   async delete(wealthboxId: number) {
     try {
-      return await prisma.user.delete({
+      return await this.prisma.user.delete({
         where: { wealthboxId },
       });
     } catch (error) {
@@ -162,4 +165,4 @@ export class UserRepository {
   }
 }
 
-export const userRepository = new UserRepository(); 
+export const userRepository = new UserRepository(new PrismaClient()); 

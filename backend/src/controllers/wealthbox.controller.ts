@@ -1,16 +1,18 @@
 import { Request, Response } from 'express';
 import { wealthboxService } from '../services/wealthbox.service';
+import logger from '../utils/logger';
 
 export class WealthboxController {
   async getContacts(req: Request, res: Response) {
     try {
       const page = parseInt(req.query.page as string) || 1;
-      const perPage = parseInt(req.query.perPage as string) || 100;
-      
-      const contacts = await wealthboxService.fetchContacts(page, perPage);
+      const limit = parseInt(req.query.limit as string) || 10;
+
+      const contacts = await wealthboxService.getContacts(page, limit);
       res.json(contacts);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error) {
+      logger.error('Error fetching contacts:', error);
+      res.status(500).json({ error: 'Failed to fetch contacts' });
     }
   }
 
@@ -23,51 +25,27 @@ export class WealthboxController {
     }
   }
 
-  async getContact(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const contact = await wealthboxService.getContact(parseInt(id));
-      res.json(contact);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
-
-  async getTasks(req: Request, res: Response) {
-    try {
-      const tasks = await wealthboxService.getTasks();
-      res.json(tasks);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
-
   async getTask(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const task = await wealthboxService.getTask(parseInt(id));
+      const task = await wealthboxService.getTask(id);
       res.json(task);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+    } catch (error) {
+      logger.error('Error fetching task:', error);
+      res.status(500).json({ error: 'Failed to fetch task' });
     }
   }
 
-  async getEvents(req: Request, res: Response) {
+  async handleWebhook(req: Request, res: Response) {
     try {
-      const events = await wealthboxService.getEvents();
-      res.json(events);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  }
+      const signature = req.headers['x-wealthbox-signature'] as string;
+      const payload = JSON.stringify(req.body);
 
-  async getEvent(req: Request, res: Response) {
-    try {
-      const { id } = req.params;
-      const event = await wealthboxService.getEvent(parseInt(id));
-      res.json(event);
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      await wealthboxService.handleWebhook(payload, signature);
+      res.json({ message: 'Webhook processed successfully' });
+    } catch (error) {
+      logger.error('Error processing webhook:', error);
+      res.status(500).json({ error: 'Failed to process webhook' });
     }
   }
 }

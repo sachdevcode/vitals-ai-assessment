@@ -1,41 +1,33 @@
 import { Request, Response } from 'express';
 import { userRepository } from '../repositories/user.repository';
 import { wealthboxService } from '../services/wealthbox.service';
-import logger from '../utils/logger';
+import { userService } from "../services/user.service";
 
 export class UserController {
+  async getUsers(req: Request, res: Response) {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const search = req.query.search as string;
+      const organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+
+      const users = await userService.findAll(page, limit, search, organizationId);
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  }
+
   async syncUsers(req: Request, res: Response) {
     try {
-      const contacts = await wealthboxService.fetchAllContacts();
-      const results = await Promise.allSettled(
-        contacts.map(async (contact) => {
-          try {
-            await userRepository.upsert({
-              wealthboxId: contact.id,
-              firstName: contact.firstName,
-              lastName: contact.lastName,
-              email: contact.email,
-              organizationId: contact.organization?.id,
-            });
-          } catch (error) {
-            logger.error(`Error syncing user ${contact.id}:`, error);
-            throw error;
-          }
-        })
-      );
-
-      const successCount = results.filter((r) => r.status === 'fulfilled').length;
-      const failureCount = results.filter((r) => r.status === 'rejected').length;
-
-      res.json({
-        message: 'Sync completed',
-        total: contacts.length,
-        success: successCount,
-        failed: failureCount,
-      });
+      const result = await userService.syncUsers();
+      res.json(result);
     } catch (error) {
-      logger.error('Error syncing users:', error);
-      res.status(500).json({ error: 'Failed to sync users' });
+      if (error instanceof Error && error.message === "Invalid Wealthbox API credentials") {
+        res.status(401).json({ error: "Invalid Wealthbox API credentials" });
+      } else {
+        res.status(500).json({ error: "Failed to sync users" });
+      }
     }
   }
 
@@ -53,7 +45,6 @@ export class UserController {
       const result = await userRepository.findAll(params);
       res.json(result);
     } catch (error) {
-      logger.error('Error fetching users:', error);
       res.status(500).json({ error: 'Failed to fetch users' });
     }
   }
@@ -64,10 +55,9 @@ export class UserController {
       if (isConnected) {
         res.json({ message: 'Successfully connected to Wealthbox API' });
       } else {
-        res.status(500).json({ error: 'Failed to connect to Wealthbox API' });
+        res.status(401).json({ error: 'Invalid Wealthbox API credentials' });
       }
     } catch (error) {
-      logger.error('Error testing Wealthbox API connection:', error);
       res.status(500).json({ error: 'Failed to test Wealthbox API connection' });
     }
   }

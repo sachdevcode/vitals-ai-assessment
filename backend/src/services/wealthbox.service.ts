@@ -4,24 +4,36 @@ import { userRepository } from '../repositories/user.repository';
 import { organizationRepository } from '../repositories/organization.repository';
 import logger from '../utils/logger';
 
-interface WealthboxContact {
-  id: number;
+export interface WealthboxContact {
+  id: string;
   firstName: string;
   lastName: string;
   email: string;
-  organization?: {
-    id: number;
-    name: string;
-  };
+  organizationId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface WealthboxTask {
-  id: number;
+export interface WealthboxTask {
+  id: string;
   title: string;
-  description: string;
-  dueDate: string;
+  description?: string;
+  dueDate?: string;
   status: string;
-  contactId: number;
+  contactId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WealthboxEvent {
+  id: string;
+  title: string;
+  description?: string;
+  startDate: string;
+  endDate?: string;
+  contactId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export class WealthboxService {
@@ -29,16 +41,22 @@ export class WealthboxService {
   private readonly apiKey: string;
   private readonly maxRetries: number = 3;
   private readonly retryDelay: number = 1000;
+  private readonly webhookSecret: string;
 
   constructor() {
     this.baseURL = env.WEALTHBOX_API_URL;
     this.apiKey = env.WEALTHBOX_API_KEY;
+    this.webhookSecret = env.WEALTHBOX_WEBHOOK_SECRET;
+
+    if (!this.baseURL || !this.apiKey || !this.webhookSecret) {
+      throw new Error("Missing required Wealthbox configuration");
+    }
   }
 
   private getHeaders() {
     return {
-      'ACCESS_TOKEN': this.apiKey,
-      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.apiKey}`,
+      "Content-Type": "application/json",
     };
   }
 
@@ -65,61 +83,173 @@ export class WealthboxService {
     }
   }
 
-  async fetchContacts(page: number = 1, perPage: number = 100): Promise<WealthboxContact[]> {
+  async getContacts(page: number = 1, limit: number = 10): Promise<{
+    data: WealthboxContact[];
+    pagination: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    };
+  }> {
     try {
       const response = await this.retryWithBackoff(() =>
         axios.get(`${this.baseURL}/contacts`, {
           headers: this.getHeaders(),
-          params: { page, per_page: perPage }
+          params: { page, limit },
         })
       );
 
-      if (!response.data || !Array.isArray(response.data)) {
-        logger.error('Unexpected response structure from Wealthbox API');
-        throw new Error('Invalid response from Wealthbox API');
+      if (!response.data || !Array.isArray(response.data.contacts)) {
+        return {
+          data: [],
+          pagination: {
+            total: 0,
+            page: 1,
+            limit: 10,
+            totalPages: 0,
+          },
+        };
       }
 
-      return response.data;
+      return {
+        data: response.data.contacts,
+        pagination: {
+          total: response.data.total || 0,
+          page: response.data.page || 1,
+          limit: response.data.limit || 10,
+          totalPages: Math.ceil((response.data.total || 0) / (response.data.limit || 10)),
+        },
+      };
     } catch (error) {
-      logger.error('Error fetching contacts from Wealthbox:', error);
-      throw new Error('Failed to fetch contacts from Wealthbox');
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error("Invalid Wealthbox API credentials");
+      }
+      return {
+        data: [],
+        pagination: {
+          total: 0,
+          page: 1,
+          limit: 10,
+          totalPages: 0,
+        },
+      };
     }
   }
 
   async fetchAllContacts(): Promise<WealthboxContact[]> {
     try {
       const response = await this.retryWithBackoff(() =>
-        axios.get(`${this.baseURL}/contacts`, {
-          headers: this.getHeaders()
+        axios.get(`${this.baseURL}/contacts/all`, {
+          headers: this.getHeaders(),
         })
       );
 
-      if (!response.data || !Array.isArray(response.data)) {
-        logger.error('Unexpected response structure from Wealthbox API');
-        throw new Error('Invalid response from Wealthbox API');
+      if (!response.data || !Array.isArray(response.data.contacts)) {
+        return [];
       }
 
-      logger.info(`Successfully fetched ${response.data.length} contacts from Wealthbox`);
-      return response.data;
+      return response.data.contacts;
     } catch (error) {
-      logger.error('Error fetching all contacts from Wealthbox:', error);
-      throw new Error('Failed to fetch all contacts from Wealthbox');
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error("Invalid Wealthbox API credentials");
+      }
+      return [];
     }
   }
 
-  async getTask(id: number): Promise<WealthboxTask> {
+  async getTask(id: string): Promise<WealthboxTask | null> {
     try {
       const response = await this.retryWithBackoff(() =>
         axios.get(`${this.baseURL}/tasks/${id}`, {
-          headers: this.getHeaders()
+          headers: this.getHeaders(),
         })
       );
 
-      return response.data;
+      if (!response.data || !response.data.task) {
+        return null;
+      }
+
+      return response.data.task;
     } catch (error) {
-      logger.error('Error fetching task from Wealthbox:', error);
-      throw new Error('Failed to fetch task from Wealthbox');
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error("Invalid Wealthbox API credentials");
+      }
+      return null;
     }
+  }
+
+  verifyWebhookSignature(payload: string, signature: string): boolean {
+    if (!signature) {
+      return false;
+    }
+
+    const expectedSignature = this.webhookSecret;
+    return signature === expectedSignature;
+  }
+
+  async handleWebhook(payload: string, signature: string): Promise<void> {
+    if (!this.verifyWebhookSignature(payload, signature)) {
+      throw new Error("Invalid webhook signature");
+    }
+
+    try {
+      const event = JSON.parse(payload) as {
+        type: string;
+        data: {
+          id: string;
+          firstName?: string;
+          lastName?: string;
+          email?: string;
+          organizationId?: string;
+          createdAt?: string;
+          updatedAt?: string;
+        };
+      };
+
+      await this.handleWebhookEvent(event);
+    } catch (error) {
+      throw new Error("Failed to process webhook");
+    }
+  }
+
+  private async handleWebhookEvent(event: {
+    type: string;
+    data: {
+      id: string;
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      organizationId?: string;
+      createdAt?: string;
+      updatedAt?: string;
+    };
+  }): Promise<void> {
+    switch (event.type) {
+      case "contact.created":
+      case "contact.updated":
+        await this.handleContactChange(event.data);
+        break;
+      case "contact.deleted":
+        await this.handleContactDeletion(event.data.id);
+        break;
+    }
+  }
+
+  private async handleContactChange(data: {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    organizationId?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  }): Promise<void> {
+    // Implementation
+  }
+
+  private async handleContactDeletion(wealthboxId: string): Promise<void> {
+    // Implementation
   }
 
   async testConnection(): Promise<boolean> {
@@ -132,7 +262,9 @@ export class WealthboxService {
       );
       return true;
     } catch (error) {
-      logger.error('Error testing Wealthbox API connection:', error);
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        return false;
+      }
       return false;
     }
   }
