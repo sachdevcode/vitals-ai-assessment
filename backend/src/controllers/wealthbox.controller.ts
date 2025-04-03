@@ -70,4 +70,6 @@ export class WealthboxController {
       res.status(500).json({ error: error.message });
     }
   }
-} 
+}
+
+export const wealthboxController = new WealthboxController(); 
