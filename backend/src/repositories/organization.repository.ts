@@ -13,6 +13,17 @@ export class OrganizationRepository {
     }
   }
 
+  async findById(id: number) {
+    try {
+      return await prisma.organization.findUnique({
+        where: { id },
+      });
+    } catch (error) {
+      logger.error('Error finding organization by ID:', error);
+      throw new Error('Failed to find organization');
+    }
+  }
+
   async findByName(name: string) {
     try {
       return await prisma.organization.findFirst({
@@ -21,6 +32,18 @@ export class OrganizationRepository {
     } catch (error) {
       logger.error('Error finding organization by name:', error);
       throw new Error('Failed to find organization');
+    }
+  }
+
+  async update(id: number, data: { name: string }) {
+    try {
+      return await prisma.organization.update({
+        where: { id },
+        data,
+      });
+    } catch (error) {
+      logger.error('Error updating organization:', error);
+      throw new Error('Failed to update organization');
     }
   }
 
@@ -52,6 +75,17 @@ export class OrganizationRepository {
     } catch (error) {
       logger.error('Error finding all organizations:', error);
       throw new Error('Failed to find organizations');
+    }
+  }
+
+  async delete(id: number) {
+    try {
+      return await prisma.organization.delete({
+        where: { id },
+      });
+    } catch (error) {
+      logger.error('Error deleting organization:', error);
+      throw new Error('Failed to delete organization');
     }
   }
 

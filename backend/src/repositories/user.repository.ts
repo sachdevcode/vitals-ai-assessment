@@ -1,16 +1,13 @@
-import { PrismaClient, Prisma } from '@prisma/client';
+import prisma from '../config/prisma';
 import logger from '../utils/logger';
+import { Prisma } from '@prisma/client';
 
-const prisma = new PrismaClient();
-
-type UserWhereInput = {
-  OR?: Array<{
-    firstName?: { contains: string; mode: 'insensitive' };
-    lastName?: { contains: string; mode: 'insensitive' };
-    email?: { contains: string; mode: 'insensitive' };
-  }>;
+interface FindAllParams {
+  page?: number;
+  limit?: number;
+  search?: string;
   organizationId?: number;
-};
+}
 
 export class UserRepository {
   async create(data: {
@@ -73,7 +70,7 @@ export class UserRepository {
         },
       });
     } catch (error) {
-      logger.error('Error finding users by organization ID:', error);
+      logger.error('Error finding users by organization:', error);
       throw error;
     }
   }
@@ -81,82 +78,60 @@ export class UserRepository {
   async upsert(data: {
     wealthboxId: number;
     firstName: string;
-    lastName?: string;
+    lastName: string;
     email: string;
     organizationId?: number;
   }) {
     try {
-      // Ensure lastName is provided, use a default if not
-      const lastName = data.lastName || 'Unknown';
-
-      const existingUser = await this.findByWealthboxId(data.wealthboxId);
-
-      if (existingUser) {
-        // Update existing user
-        return await prisma.user.update({
-          where: { wealthboxId: data.wealthboxId },
-          data: {
-            firstName: data.firstName || existingUser.firstName,
-            lastName: lastName,
-            email: data.email,
-            organizationId: data.organizationId,
-          },
-          include: {
-            organization: true,
-          },
-        });
-      } else {
-        // Create new user
-        return await prisma.user.create({
-          data: {
-            wealthboxId: data.wealthboxId,
-            firstName: data.firstName,
-            lastName: lastName,
-            email: data.email,
-            organizationId: data.organizationId,
-          },
-          include: {
-            organization: true,
-          },
-        });
-      }
+      return await prisma.user.upsert({
+        where: { wealthboxId: data.wealthboxId },
+        create: {
+          wealthboxId: data.wealthboxId,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          organizationId: data.organizationId,
+        },
+        update: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          organizationId: data.organizationId,
+        },
+      });
     } catch (error) {
-      logger.error('Error upserting user:', { data, error });
-      throw new Error('Failed to upsert user');
+      logger.error('Error upserting user:', error);
+      throw error;
     }
   }
 
-  async findAll(params: {
-    page?: number;
-    limit?: number;
-    search?: string;
-    organizationId?: number;
-  }) {
+  async findAll(params: FindAllParams) {
     try {
       const { page = 1, limit = 10, search, organizationId } = params;
       const skip = (page - 1) * limit;
 
-      const where: Prisma.UserWhereInput = {
-        ...(search && {
-          OR: [
-            { firstName: { contains: search, mode: Prisma.QueryMode.insensitive } },
-            { lastName: { contains: search, mode: Prisma.QueryMode.insensitive } },
-            { email: { contains: search, mode: Prisma.QueryMode.insensitive } },
-          ],
-        }),
-        ...(organizationId && { organizationId }),
-      };
+      const where: Prisma.UserWhereInput = {};
+      if (search) {
+        where.OR = [
+          { firstName: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { lastName: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          { email: { contains: search, mode: Prisma.QueryMode.insensitive } },
+        ];
+      }
+      if (organizationId) {
+        where.organizationId = organizationId;
+      }
 
       const [users, total] = await Promise.all([
         prisma.user.findMany({
           where,
-          skip,
-          take: limit,
           include: {
             organization: true,
           },
+          skip,
+          take: limit,
           orderBy: {
-            createdAt: 'desc',
+            firstName: 'asc',
           },
         }),
         prisma.user.count({ where }),
@@ -164,15 +139,13 @@ export class UserRepository {
 
       return {
         users,
-        pagination: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit),
-        },
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
       };
     } catch (error) {
-      logger.error('Error finding all users:', error);
+      logger.error('Error finding users:', error);
       throw error;
     }
   }

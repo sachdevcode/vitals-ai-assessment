@@ -1,21 +1,19 @@
-import { Request } from 'express';
 import crypto from 'crypto';
-import env from '../config/env';
-import logger from '../utils/logger';
+import { Request } from 'express';
 import { userRepository } from '../repositories/user.repository';
-import { organizationRepository } from '../repositories/organization.repository';
+import logger from '../utils/logger';
 
 interface WebhookEvent {
-  type: 'contact.created' | 'contact.updated' | 'contact.deleted';
+  type: string;
   data: {
     id: number;
-    first_name: string;
-    last_name: string;
-    email_addresses: Array<{
-      email: string;
-      primary: boolean;
-    }>;
-    company_name?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    organization?: {
+      id: number;
+      name: string;
+    };
   };
 }
 
@@ -23,88 +21,87 @@ export class WebhookService {
   private readonly webhookSecret: string;
 
   constructor() {
-    this.webhookSecret = env.WEALTHBOX_WEBHOOK_SECRET;
+    const secret = process.env.WEALTHBOX_WEBHOOK_SECRET;
+    if (!secret) {
+      throw new Error('WEALTHBOX_WEBHOOK_SECRET is required');
+    }
+    this.webhookSecret = secret;
   }
 
-  verifySignature(payload: string, signature: string): boolean {
+  verifyWebhookSignature(req: Request): boolean {
+    const signature = req.headers['x-wealthbox-signature'];
+    if (!signature) {
+      logger.warn('Missing webhook signature');
+      return false;
+    }
+
     const hmac = crypto.createHmac('sha256', this.webhookSecret);
-    const calculatedSignature = hmac.update(payload).digest('hex');
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
+    const calculatedSignature = hmac
+      .update(JSON.stringify(req.body))
+      .digest('hex');
+
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(signature as string),
       Buffer.from(calculatedSignature)
     );
+
+    if (!isValid) {
+      logger.warn('Invalid webhook signature');
+    }
+
+    return isValid;
   }
 
   async handleWebhook(req: Request): Promise<void> {
-    const signature = req.headers['x-wealthbox-signature'] as string;
-    if (!signature) {
-      throw new Error('No signature provided');
-    }
-
-    const payload = JSON.stringify(req.body);
-    if (!this.verifySignature(payload, signature)) {
-      throw new Error('Invalid signature');
+    if (!this.verifyWebhookSignature(req)) {
+      throw new Error('Invalid webhook signature');
     }
 
     const event = req.body as WebhookEvent;
-    await this.processEvent(event);
+    await this.handleWebhookEvent(event);
   }
 
-  private async processEvent(event: WebhookEvent): Promise<void> {
+  private async handleWebhookEvent(event: WebhookEvent): Promise<void> {
     try {
       switch (event.type) {
         case 'contact.created':
         case 'contact.updated':
-          await this.handleContactChange(event.data, event.type);
+          await this.handleContactChange(event.data);
           break;
         case 'contact.deleted':
-          await this.handleContactDeletion(event.data);
+          await this.handleContactDeletion(event.data.id);
           break;
         default:
           logger.warn(`Unhandled event type: ${event.type}`);
       }
     } catch (error) {
-      logger.error('Error processing webhook event:', error);
+      logger.error('Error handling webhook event:', error);
       throw error;
     }
   }
 
-  private async handleContactChange(
-    data: WebhookEvent['data'], 
-    eventType: WebhookEvent['type']
-  ): Promise<void> {
-    const primaryEmail = data.email_addresses.find(email => email.primary)?.email;
-    if (!primaryEmail) {
-      logger.warn(`Contact ${data.id} has no primary email`);
-      return;
-    }
-
-    let organizationId: number | undefined;
-    if (data.company_name) {
-      const organization = await organizationRepository.upsert({
-        name: data.company_name,
+  private async handleContactChange(data: WebhookEvent['data']): Promise<void> {
+    try {
+      await userRepository.upsert({
+        wealthboxId: data.id,
+        firstName: data.firstName || '',
+        lastName: data.lastName || '',
+        email: data.email || '',
+        organizationId: data.organization?.id,
       });
-      organizationId = organization.id;
+      logger.info(`Successfully processed contact change for ID: ${data.id}`);
+    } catch (error) {
+      logger.error('Error handling contact change:', error);
+      throw error;
     }
-
-    await userRepository.upsert({
-      wealthboxId: data.id,
-      firstName: data.first_name,
-      lastName: data.last_name,
-      email: primaryEmail,
-      organizationId,
-    });
-
-    logger.info(`Successfully processed ${eventType} for contact ${data.id}`);
   }
 
-  private async handleContactDeletion(data: { id: number }) {
+  private async handleContactDeletion(wealthboxId: number): Promise<void> {
     try {
-      const wealthboxId = data.id;
       await userRepository.delete(wealthboxId);
-      //logger.info(`Successfully deleted contact ${wealthboxId}`);
+      logger.info(`Successfully processed contact deletion for ID: ${wealthboxId}`);
     } catch (error) {
-      //logger.error('Error deleting contact:', error);
+      logger.error('Error handling contact deletion:', error);
       throw error;
     }
   }

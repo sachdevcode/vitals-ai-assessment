@@ -6,10 +6,10 @@ export class WebhookController {
   async handleWebhook(req: Request, res: Response) {
     try {
       await webhookService.handleWebhook(req);
-      res.status(200).json({ message: 'Webhook processed successfully' });
+      res.json({ message: 'Webhook processed successfully' });
     } catch (error) {
       logger.error('Error handling webhook:', error);
-      res.status(400).json({ error: 'Failed to process webhook' });
+      res.status(500).json({ error: 'Failed to process webhook' });
     }
   }
 }

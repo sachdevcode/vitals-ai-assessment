@@ -1,65 +1,37 @@
 import { Request, Response } from 'express';
-import { wealthboxService } from '../services/wealthbox.service';
 import { userRepository } from '../repositories/user.repository';
-import { organizationRepository } from '../repositories/organization.repository';
+import { wealthboxService } from '../services/wealthbox.service';
 import logger from '../utils/logger';
 
 export class UserController {
   async syncUsers(req: Request, res: Response) {
     try {
-      logger.info('Starting user sync from Wealthbox');
       const contacts = await wealthboxService.fetchAllContacts();
-      logger.info(`Fetched ${contacts.length} contacts from Wealthbox`);
-
-      let successCount = 0;
-      let skippedCount = 0;
-      let errorCount = 0;
-
-      for (const contact of contacts) {
-        try {
-          // Get primary email or generate a fallback identifier
-          const primaryEmail = contact.email_addresses.find(email => email.primary)?.email;
-          const fallbackEmail = primaryEmail || `contact_${contact.id}@placeholder.com`;
-
-          // Handle organization first if company_name exists
-          let organizationId: number | undefined;
-          if (contact.company_name) {
-            try {
-              const organization = await organizationRepository.upsert({
-                name: contact.company_name,
-              });
-              organizationId = organization.id;
-            } catch (error) {
-              logger.error(`Error processing organization for contact ${contact.id}:`, error);
-              errorCount++;
-              continue;
-            }
+      const results = await Promise.allSettled(
+        contacts.map(async (contact) => {
+          try {
+            await userRepository.upsert({
+              wealthboxId: contact.id,
+              firstName: contact.firstName,
+              lastName: contact.lastName,
+              email: contact.email,
+              organizationId: contact.organization?.id,
+            });
+          } catch (error) {
+            logger.error(`Error syncing user ${contact.id}:`, error);
+            throw error;
           }
+        })
+      );
 
-          // Create or update user
-          await userRepository.upsert({
-            wealthboxId: contact.id,
-            firstName: contact.first_name,
-            lastName: contact.last_name,
-            email: fallbackEmail,
-            organizationId,
-          });
+      const successCount = results.filter((r) => r.status === 'fulfilled').length;
+      const failureCount = results.filter((r) => r.status === 'rejected').length;
 
-          successCount++;
-          logger.debug(`Successfully synced contact ${contact.id} with email ${fallbackEmail}`);
-        } catch (error) {
-          logger.error(`Error processing contact ${contact.id}:`, error);
-          errorCount++;
-        }
-      }
-
-      logger.info(`Sync completed. Successfully synced ${successCount} out of ${contacts.length} users`);
       res.json({
         message: 'Sync completed',
         total: contacts.length,
         success: successCount,
-        skipped: skippedCount,
-        errors: errorCount,
+        failed: failureCount,
       });
     } catch (error) {
       logger.error('Error syncing users:', error);
