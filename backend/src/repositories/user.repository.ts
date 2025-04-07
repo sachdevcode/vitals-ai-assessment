@@ -143,6 +143,7 @@ export class UserRepository {
       });
 
       if (existingUser) {
+        logger.info(`Found existing user by wealthboxId: ${data.wealthboxId}`);
         // Update existing user
         return await this.prisma.user.update({
           where: { wealthboxId: data.wealthboxId },
@@ -155,13 +156,19 @@ export class UserRepository {
         });
       }
 
-      // If no user found by wealthboxId, try to find by email
+      // If no user found by wealthboxId and we have an email, try to find by email
       if (data.email) {
         const userByEmail = await this.prisma.user.findUnique({
           where: { email: data.email }
         });
 
         if (userByEmail) {
+          logger.info(`Found existing user by email: ${data.email}`);
+          // If the existing user has a different wealthboxId, log a warning
+          if (userByEmail.wealthboxId !== data.wealthboxId) {
+            logger.warn(`Updating user with different wealthboxId. Old: ${userByEmail.wealthboxId}, New: ${data.wealthboxId}`);
+          }
+          
           // Update existing user with new wealthboxId
           return await this.prisma.user.update({
             where: { email: data.email },
@@ -175,16 +182,44 @@ export class UserRepository {
         }
       }
 
-      // If no existing user found, create new one
-      return await this.prisma.user.create({
-        data: {
-          wealthboxId: data.wealthboxId,
-          firstName: data.firstName || 'Unknown',
-          lastName: data.lastName || '',
-          email: data.email || '',
-          organizationId: data.organizationId || undefined
+      // If no existing user found, try to create new one
+      try {
+        logger.info(`Creating new user with wealthboxId: ${data.wealthboxId}`);
+        return await this.prisma.user.create({
+          data: {
+            wealthboxId: data.wealthboxId,
+            firstName: data.firstName || 'Unknown',
+            lastName: data.lastName || '',
+            email: data.email || '',
+            organizationId: data.organizationId || undefined
+          }
+        });
+      } catch (createError: any) {
+        // If create fails due to unique constraint, try to find the conflicting user
+        if (createError.code === 'P2002' && createError.meta?.target?.includes('email')) {
+          logger.warn(`Email conflict detected for ${data.email}, attempting to find and update existing user`);
+          
+          // Try to find the conflicting user by email
+          const conflictingUser = await this.prisma.user.findUnique({
+            where: { email: data.email || '' }
+          });
+
+          if (conflictingUser) {
+            logger.info(`Found conflicting user by email: ${data.email}`);
+            // Update the conflicting user
+            return await this.prisma.user.update({
+              where: { email: data.email || '' },
+              data: {
+                wealthboxId: data.wealthboxId,
+                firstName: data.firstName || conflictingUser.firstName,
+                lastName: data.lastName || conflictingUser.lastName,
+                organizationId: data.organizationId || conflictingUser.organizationId
+              }
+            });
+          }
         }
-      });
+        throw createError;
+      }
     } catch (error) {
       logger.error('Error upserting user:', error);
       throw new Error('Failed to upsert user');
