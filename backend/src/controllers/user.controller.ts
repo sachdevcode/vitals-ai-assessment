@@ -43,7 +43,10 @@ export class UserController {
       };
 
       const result = await userRepository.findAll(params);
-      res.json(result);
+      res.json({
+        users: result.data,
+        pagination: result.pagination
+      });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch users' });
     }

@@ -129,27 +129,65 @@ export class UserRepository {
 
   async upsert(data: {
     wealthboxId: number;
-    firstName: string;
-    lastName: string;
-    email: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
     organizationId?: number;
   }) {
     try {
-      return await this.prisma.user.upsert({
-        where: { wealthboxId: data.wealthboxId },
-        update: {
-          firstName: data.firstName,
-          lastName: data.lastName,
-          email: data.email,
-          organizationId: data.organizationId,
-        },
-        create: {
-          ...data,
-        },
+      logger.info(`Upserting user: ${data.firstName || 'Unknown'} ${data.lastName || ''} (${data.wealthboxId})`);
+      
+      // First try to find by wealthboxId
+      const existingUser = await this.prisma.user.findUnique({
+        where: { wealthboxId: data.wealthboxId }
+      });
+
+      if (existingUser) {
+        // Update existing user
+        return await this.prisma.user.update({
+          where: { wealthboxId: data.wealthboxId },
+          data: {
+            firstName: data.firstName || existingUser.firstName,
+            lastName: data.lastName || existingUser.lastName,
+            email: data.email || existingUser.email,
+            organizationId: data.organizationId || existingUser.organizationId
+          }
+        });
+      }
+
+      // If no user found by wealthboxId, try to find by email
+      if (data.email) {
+        const userByEmail = await this.prisma.user.findUnique({
+          where: { email: data.email }
+        });
+
+        if (userByEmail) {
+          // Update existing user with new wealthboxId
+          return await this.prisma.user.update({
+            where: { email: data.email },
+            data: {
+              wealthboxId: data.wealthboxId,
+              firstName: data.firstName || userByEmail.firstName,
+              lastName: data.lastName || userByEmail.lastName,
+              organizationId: data.organizationId || userByEmail.organizationId
+            }
+          });
+        }
+      }
+
+      // If no existing user found, create new one
+      return await this.prisma.user.create({
+        data: {
+          wealthboxId: data.wealthboxId,
+          firstName: data.firstName || 'Unknown',
+          lastName: data.lastName || '',
+          email: data.email || '',
+          organizationId: data.organizationId || undefined
+        }
       });
     } catch (error) {
-      logger.error("Error upserting user:", error);
-      throw new Error("Failed to upsert user");
+      logger.error('Error upserting user:', error);
+      throw new Error('Failed to upsert user');
     }
   }
 

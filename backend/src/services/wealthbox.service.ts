@@ -9,7 +9,7 @@ export interface WealthboxContact {
   firstName: string;
   lastName: string;
   email: string;
-  organizationId?: string;
+  organizationId?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,7 +55,7 @@ export class WealthboxService {
 
   private getHeaders() {
     return {
-      Authorization: `Bearer ${this.apiKey}`,
+      "ACCESS_TOKEN": "41c6d094c65d4258995ae8964ae6c7f8",
       "Content-Type": "application/json",
     };
   }
@@ -139,18 +139,46 @@ export class WealthboxService {
 
   async fetchAllContacts(): Promise<WealthboxContact[]> {
     try {
+      logger.info('Fetching contacts from Wealthbox API...');
       const response = await this.retryWithBackoff(() =>
-        axios.get(`${this.baseURL}/contacts/all`, {
+        axios.get(`${this.baseURL}/contacts`, {
           headers: this.getHeaders(),
         })
       );
+      
+      logger.info('Wealthbox API Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        data: response.data
+      });
 
       if (!response.data || !Array.isArray(response.data.contacts)) {
+        logger.warn('No contacts found in response or invalid data structure');
         return [];
       }
 
-      return response.data.contacts;
+      // Transform the contacts to ensure correct data types
+      const contacts = response.data.contacts.map((contact: any) => ({
+        id: contact.id,
+        firstName: contact.first_name || '',
+        lastName: contact.last_name || '',
+        email: contact.email || '',
+        organizationId: contact.organization_id ? Number(contact.organization_id) : undefined,
+        createdAt: contact.created_at,
+        updatedAt: contact.updated_at
+      }));
+
+      logger.info(`Successfully fetched ${contacts.length} contacts`);
+      return contacts;
     } catch (error) {
+      logger.error('Error fetching contacts:', error);
+      if (axios.isAxiosError(error)) {
+        logger.error('Axios error details:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data
+        });
+      }
       if (axios.isAxiosError(error) && error.response?.status === 401) {
         throw new Error("Invalid Wealthbox API credentials");
       }
