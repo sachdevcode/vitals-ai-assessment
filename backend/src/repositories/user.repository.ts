@@ -137,14 +137,15 @@ export class UserRepository {
     try {
       logger.info(`Upserting user: ${data.firstName || 'Unknown'} ${data.lastName || ''} (${data.wealthboxId})`);
       
-      // First try to find by wealthboxId
+
+
       const existingUser = await this.prisma.user.findUnique({
         where: { wealthboxId: data.wealthboxId }
       });
 
       if (existingUser) {
         logger.info(`Found existing user by wealthboxId: ${data.wealthboxId}`);
-        // Update existing user
+
         return await this.prisma.user.update({
           where: { wealthboxId: data.wealthboxId },
           data: {
@@ -156,7 +157,7 @@ export class UserRepository {
         });
       }
 
-      // If no user found by wealthboxId and we have an email, try to find by email
+
       if (data.email) {
         const userByEmail = await this.prisma.user.findUnique({
           where: { email: data.email }
@@ -164,12 +165,12 @@ export class UserRepository {
 
         if (userByEmail) {
           logger.info(`Found existing user by email: ${data.email}`);
-          // If the existing user has a different wealthboxId, log a warning
+          
           if (userByEmail.wealthboxId !== data.wealthboxId) {
             logger.warn(`Updating user with different wealthboxId. Old: ${userByEmail.wealthboxId}, New: ${data.wealthboxId}`);
           }
           
-          // Update existing user with new wealthboxId
+   
           return await this.prisma.user.update({
             where: { email: data.email },
             data: {
@@ -182,7 +183,7 @@ export class UserRepository {
         }
       }
 
-      // If no existing user found, try to create new one
+
       try {
         logger.info(`Creating new user with wealthboxId: ${data.wealthboxId}`);
         return await this.prisma.user.create({
@@ -195,18 +196,18 @@ export class UserRepository {
           }
         });
       } catch (createError: any) {
-        // If create fails due to unique constraint, try to find the conflicting user
+  
         if (createError.code === 'P2002' && createError.meta?.target?.includes('email')) {
           logger.warn(`Email conflict detected for ${data.email}, attempting to find and update existing user`);
           
-          // Try to find the conflicting user by email
+     
           const conflictingUser = await this.prisma.user.findUnique({
             where: { email: data.email || '' }
           });
 
           if (conflictingUser) {
             logger.info(`Found conflicting user by email: ${data.email}`);
-            // Update the conflicting user
+
             return await this.prisma.user.update({
               where: { email: data.email || '' },
               data: {

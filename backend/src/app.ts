@@ -10,7 +10,7 @@ import logger from "./utils/logger";
 
 const app = express();
 
-// Enable CORS for all routes
+
 app.use(
   cors({
     origin: "*"
@@ -19,18 +19,18 @@ app.use(
 
 app.use(express.json());
 
-// Public routes (no auth required)
+
 app.use("/api/webhooks/wealthbox", webhookRoutes);
 
-// Protected routes (auth required)
+
 app.use("/api/users", userRoutes);
 app.use("/api/organizations", organizationRoutes);
 app.use("/api/wealthbox", authMiddleware, wealthboxRoutes);
 
-// Start scheduled sync
+
 schedulerService.startScheduledSync();
 
-// Error handling middleware
+
 app.use(
   (
     err: Error,
@@ -43,7 +43,7 @@ app.use(
   }
 );
 
-// Graceful shutdown
+
 process.on("SIGTERM", () => {
   logger.info("SIGTERM received. Shutting down gracefully...");
   schedulerService.stopScheduledSync();

@@ -4,7 +4,6 @@ import { userRepository } from '../repositories/user.repository';
 import logger from '../utils/logger';
 import { z } from 'zod';
 
-// Validation schema for organization creation and updates
 const organizationSchema = z.object({
   name: z.string().min(1, 'Organization name is required').max(255, 'Organization name is too long'),
 });
@@ -22,10 +21,9 @@ export class OrganizationController {
 
   async createOrganization(req: Request, res: Response) {
     try {
-      // Validate request body
+
       const validatedData = organizationSchema.parse(req.body);
 
-      // Create organization
       const organization = await organizationRepository.create({
         name: validatedData.name,
       });
@@ -46,16 +44,16 @@ export class OrganizationController {
       const { id } = req.params;
       const organizationId = parseInt(id);
 
-      // Validate request body
+ 
       const validatedData = organizationSchema.parse(req.body);
 
-      // Check if organization exists
+   
       const existingOrg = await organizationRepository.findById(organizationId);
       if (!existingOrg) {
         return res.status(404).json({ error: 'Organization not found' });
       }
 
-      // Update organization
+
       const organization = await organizationRepository.update(organizationId, {
         name: validatedData.name,
       });
@@ -76,13 +74,13 @@ export class OrganizationController {
       const { id } = req.params;
       const organizationId = parseInt(id);
 
-      // Check if organization exists
+
       const organization = await organizationRepository.findById(organizationId);
       if (!organization) {
         return res.status(404).json({ error: 'Organization not found' });
       }
 
-      // Delete the organization
+
       await organizationRepository.delete(organizationId);
       res.status(204).send();
     } catch (error) {

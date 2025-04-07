@@ -157,7 +157,7 @@ export class WealthboxService {
         return [];
       }
 
-      // Transform the contacts to ensure correct data types
+
       const contacts = response.data.contacts.map((contact: any) => ({
         id: contact.id,
         firstName: contact.first_name || '',
@@ -273,11 +273,11 @@ export class WealthboxService {
     createdAt?: string;
     updatedAt?: string;
   }): Promise<void> {
-    // Implementation
+
   }
 
   private async handleContactDeletion(wealthboxId: string): Promise<void> {
-    // Implementation
+    
   }
 
   async testConnection(): Promise<boolean> {
